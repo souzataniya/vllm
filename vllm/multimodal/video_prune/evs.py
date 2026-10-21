@@ -315,12 +315,20 @@ def recompute_mrope_positions(
         # the sequence actually begins (before timestamp tokens).
         adjusted_for_timestamps = False
         if mm_pos.shape[0] == 5 and mm_embeddings_seen == 0 and has_video_tokens:
-            # NOTE: -1 is because there is a vision start token right after
-            # timestamp tokens before any video embeddings appear.
-
-            # Adjust global_mm_start to point to the first timestamp token
-            # instead of the vision_start token.
-            global_mm_start -= num_timestamp_tokens
+            # Locate the block from the first video token itself rather than
+            # the nearest vision_start_indices entry. Since transformers
+            # >= 5.10 keeps an outer vision_start/vision_end pair around the
+            # whole video, the vision_start token at/after the cursor found
+            # above may be that outer marker instead of the inner one that
+            # immediately precedes the video tokens, which would otherwise
+            # make global_mm_start num_timestamp_tokens + 1 too early.
+            first_video_token_idx = video_mask.nonzero(as_tuple=True)[0]
+            first_video_token_idx = first_video_token_idx[
+                first_video_token_idx >= num_computed_tokens
+            ][0]
+            global_mm_start = (
+                int(first_video_token_idx.item()) - num_timestamp_tokens - 1
+            )
             adjusted_for_timestamps = True
 
         # Offset calculation depends on whether we adjusted for timestamp tokens
